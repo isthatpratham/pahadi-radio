@@ -6,6 +6,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Pahadi Radio",
   description: "A tiny radio station hidden somewhere in the mountains.",
+  icons: {
+    icon: "/bg/favicon.png",
+  },
 };
 
 export const viewport: Viewport = {
