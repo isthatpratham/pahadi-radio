@@ -89,7 +89,7 @@ The mountain landscape is the main visual. The interface stays intentionally min
 
 ## Inspiration
 
-Pahadi Radio is inspired by the recent wave of experimental, nostalgic, single-purpose websites shared through Instagram Reels and social media. [Desi Saloon](https://www.saloon.wtf) is one example of how a website can be an experience in itself rather than a collection of features.
+Pahadi Radio is inspired by the recent wave of experimental, nostalgic, single-purpose websites shared through Instagram Reels and social media. [Deluxe Saloon](https://www.deluxesaloon.space/) is one example of how a website can be an experience in itself rather than a collection of features.
 
 Pahadi Radio is an independent project—not affiliated with or a clone of Desi Saloon—and takes that spirit somewhere else: a small radio station in the mountains.
 
