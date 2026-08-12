@@ -10,8 +10,13 @@ const track = (
   videoId: string | null = null,
 ): Track => ({ id, title, artist, film, year, duration, videoId });
 
+const developmentTestVideoId =
+  process.env.NODE_ENV === "development"
+    ? process.env.NEXT_PUBLIC_YOUTUBE_TEST_VIDEO_ID?.trim() || null
+    : null;
+
 const mountains: Track[] = [
-  track(1, "Zinda", "Amit Trivedi", "Lootera"),
+  track(1, "Zinda", "Amit Trivedi", "Lootera", null, null, developmentTestVideoId),
   track(2, "Hafiz Hafiz", "Mohit Chauhan", "Laila Majnu"),
   track(3, "Phir Se Ud Chala", "Mohit Chauhan", "Rockstar"),
   track(4, "Safarnama", "Lucky Ali", "Tamasha"),

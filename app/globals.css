@@ -430,10 +430,6 @@ a:focus-visible,
 }
 
 @media (max-height: 710px) and (orientation: landscape) {
-  .video-shell {
-    display: none;
-  }
-
   .station-panel {
     width: min(100% - 2rem, 36rem);
   }

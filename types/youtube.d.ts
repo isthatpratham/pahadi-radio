@@ -1,8 +1,11 @@
 declare global {
   type YTPlayerInstance = {
+    cueVideoById(videoId: string): void;
     destroy(): void;
     getCurrentTime(): number;
     getDuration(): number;
+    getPlayerState(): number;
+    getVideoData(): { video_id?: string };
     loadVideoById(videoId: string): void;
     pauseVideo(): void;
     playVideo(): void;

@@ -12,7 +12,7 @@ import {
 } from "react";
 import { playlists } from "@/data/playlists";
 import type { Playlist, Track } from "@/types/music";
-import { YouTubePlayer } from "./youtube-player";
+import { YouTubePlayer, type YouTubeLifecycle } from "./youtube-player";
 
 const CLOCK_FORMATTER = new Intl.DateTimeFormat("en-IN", {
   timeZone: "Asia/Kolkata",
@@ -30,11 +30,18 @@ type PlaybackState = {
 type PlayerViewProps = PlaybackState & {
   track: Track;
   canPlay: boolean;
+  canSeek: boolean;
   onPlayPause: () => void;
   onPrevious: () => void;
   onNext: () => void;
   onSeek: (seconds: number) => void;
 };
+
+const YOUTUBE_STATE = {
+  ENDED: 0,
+  PLAYING: 1,
+  PAUSED: 2,
+} as const;
 
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
@@ -42,8 +49,10 @@ function formatTime(seconds: number) {
   return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
 }
 
-function firstPlayableIndex(playlist: Playlist) {
-  const index = playlist.tracks.findIndex((track) => Boolean(track.videoId));
+function firstPlayableIndex(playlist: Playlist, unavailableVideoIds: ReadonlySet<string>) {
+  const index = playlist.tracks.findIndex(
+    (track) => track.videoId && !unavailableVideoIds.has(track.videoId),
+  );
   return index === -1 ? 0 : index;
 }
 
@@ -300,7 +309,7 @@ function DesktopPlayer(props: PlayerViewProps) {
         <SeekBar
           elapsed={props.elapsed}
           duration={props.duration}
-          disabled={!props.canPlay}
+          disabled={!props.canSeek}
           onSeek={props.onSeek}
         />
         <div className="flex items-center justify-between gap-3 text-[10.5px] text-white/50 tabular-nums">
@@ -335,7 +344,7 @@ function MobilePlayer(props: PlayerViewProps) {
         <SeekBar
           elapsed={props.elapsed}
           duration={props.duration}
-          disabled={!props.canPlay}
+          disabled={!props.canSeek}
           onSeek={props.onSeek}
         />
       </div>
@@ -385,7 +394,11 @@ function PlaylistSelector({
 
 export function RadioStation() {
   const [playlistIndex, setPlaylistIndex] = useState(0);
-  const [trackIndex, setTrackIndex] = useState(() => firstPlayableIndex(playlists[0]));
+  const [trackIndex, setTrackIndex] = useState(() =>
+    firstPlayableIndex(playlists[0], new Set<string>()),
+  );
+  const [autoplay, setAutoplay] = useState(false);
+  const [playerLifecycle, setPlayerLifecycle] = useState<YouTubeLifecycle>("idle");
   const [playback, setPlayback] = useState<PlaybackState>({
     elapsed: 0,
     duration: 0,
@@ -393,95 +406,132 @@ export function RadioStation() {
   });
   const playerRef = useRef<YTPlayerInstance | null>(null);
   const lastYouTubeState = useRef<number | null>(null);
-  const autoplayOnReady = useRef(false);
+  const failedVideoIds = useRef(new Set<string>());
+  const wasPlayingRef = useRef(false);
 
   const playlist = playlists[playlistIndex];
   const currentTrack = playlist.tracks[trackIndex] ?? playlist.tracks[0];
   const canPlay = Boolean(currentTrack.videoId);
+  const canSeek =
+    canPlay &&
+    playback.duration > 0 &&
+    playerLifecycle !== "idle" &&
+    playerLifecycle !== "api-loading" &&
+    playerLifecycle !== "creating-player" &&
+    playerLifecycle !== "error";
 
-  const findSibling = useCallback(
-    (direction: 1 | -1, allowCurrent = true) => {
+  const findPlayableSibling = useCallback(
+    (direction: 1 | -1) => {
       for (let step = 1; step <= playlist.tracks.length; step += 1) {
         const index = (trackIndex + direction * step + playlist.tracks.length) % playlist.tracks.length;
-        if (playlist.tracks[index].videoId && (allowCurrent || index !== trackIndex)) return index;
+        const videoId = playlist.tracks[index].videoId;
+        if (videoId && !failedVideoIds.current.has(videoId)) return index;
       }
       return null;
     },
     [playlist, trackIndex],
   );
 
-  const selectTrack = useCallback((index: number) => {
+  const selectTrack = useCallback((index: number, shouldAutoplay: boolean) => {
+    lastYouTubeState.current = null;
+    wasPlayingRef.current = false;
+    setAutoplay(shouldAutoplay);
     setTrackIndex(index);
     setPlayback({ elapsed: 0, duration: 0, playing: false });
-    playerRef.current = null;
   }, []);
 
-  const next = useCallback(
-    (reason: "manual" | "ended" | "error" = "manual") => {
-      const index = findSibling(1, reason !== "error");
+  const advanceToPlayable = useCallback(
+    () => {
+      const index = findPlayableSibling(1);
       if (index === null) {
+        setAutoplay(false);
         setPlayback((state) => ({ ...state, playing: false }));
         return;
       }
-      if (reason === "manual") trackEvent("track_next", { trackId: currentTrack.id });
-      autoplayOnReady.current = reason !== "manual" || playback.playing;
-      selectTrack(index);
+      selectTrack(index, true);
     },
-    [currentTrack.id, findSibling, playback.playing, selectTrack],
+    [findPlayableSibling, selectTrack],
   );
+
+  const next = useCallback(() => {
+    trackEvent("track_next", { trackId: currentTrack.id });
+    const index = findPlayableSibling(1);
+    if (index !== null) selectTrack(index, true);
+  }, [currentTrack.id, findPlayableSibling, selectTrack]);
 
   const previous = useCallback(() => {
     trackEvent("track_previous", { trackId: currentTrack.id });
-    if (playback.elapsed > 4 && playerRef.current) {
-      playerRef.current.seekTo(0, true);
-      setPlayback((state) => ({ ...state, elapsed: 0 }));
-      return;
-    }
-    const index = findSibling(-1);
-    if (index !== null) {
-      autoplayOnReady.current = playback.playing;
-      selectTrack(index);
-    }
-  }, [currentTrack.id, findSibling, playback.elapsed, playback.playing, selectTrack]);
+    const index = findPlayableSibling(-1);
+    if (index !== null) selectTrack(index, true);
+  }, [currentTrack.id, findPlayableSibling, selectTrack]);
 
-  const onReady = useCallback((player: YTPlayerInstance) => {
+  const onPlayerChange = useCallback((player: YTPlayerInstance | null) => {
     playerRef.current = player;
-    setPlayback((state) => ({ ...state, duration: player.getDuration() || 0 }));
-    if (autoplayOnReady.current) {
-      autoplayOnReady.current = false;
-      player.playVideo();
+    if (player) {
+      setPlayback((state) => ({ ...state, duration: player.getDuration() || 0 }));
     }
   }, []);
 
   const onStateChange = useCallback(
-    (state: number) => {
+    (state: number, eventVideoId: string | null) => {
+      if (eventVideoId && eventVideoId !== currentTrack.videoId) return;
       if (lastYouTubeState.current === state) return;
       lastYouTubeState.current = state;
 
-      if (state === 1) {
+      if (state === YOUTUBE_STATE.PLAYING) {
+        const shouldTrackPlay = !wasPlayingRef.current;
+        if (currentTrack.videoId) failedVideoIds.current.delete(currentTrack.videoId);
+        wasPlayingRef.current = true;
+        setAutoplay(false);
         setPlayback((value) => ({ ...value, playing: true }));
-        trackEvent("track_play", { trackId: currentTrack.id, videoId: currentTrack.videoId ?? "" });
-      } else if (state === 2) {
+        if (shouldTrackPlay) {
+          trackEvent("track_play", { trackId: currentTrack.id, videoId: currentTrack.videoId ?? "" });
+        }
+      } else if (state === YOUTUBE_STATE.PAUSED) {
+        const shouldTrackPause = wasPlayingRef.current;
+        wasPlayingRef.current = false;
+        setAutoplay(false);
         setPlayback((value) => ({ ...value, playing: false }));
-        trackEvent("track_pause", { trackId: currentTrack.id, videoId: currentTrack.videoId ?? "" });
-      } else if (state === 0) {
+        if (shouldTrackPause) {
+          trackEvent("track_pause", { trackId: currentTrack.id, videoId: currentTrack.videoId ?? "" });
+        }
+      } else if (state === YOUTUBE_STATE.ENDED) {
+        wasPlayingRef.current = false;
         setPlayback((value) => ({ ...value, playing: false }));
         trackEvent("track_ended", { trackId: currentTrack.id, videoId: currentTrack.videoId ?? "" });
-        next("ended");
+        advanceToPlayable();
+      } else {
+        const player = playerRef.current;
+        if (player) {
+          setPlayback((value) => ({
+            ...value,
+            duration: player.getDuration() || value.duration,
+          }));
+        }
       }
     },
-    [currentTrack.id, currentTrack.videoId, next],
+    [advanceToPlayable, currentTrack.id, currentTrack.videoId],
   );
 
   const onError = useCallback(
-    (code: number) => {
+    (code: number, eventVideoId: string | null) => {
+      const failedVideoId = eventVideoId ?? currentTrack.videoId;
+      if (failedVideoId) failedVideoIds.current.add(failedVideoId);
+      const failedTrack = playlist.tracks.find((track) => track.videoId === failedVideoId);
+      const isCurrentTrack = !failedVideoId || failedVideoId === currentTrack.videoId;
+
       trackEvent("youtube_error", {
         code,
-        videoId: currentTrack.videoId ?? "",
+        trackId: failedTrack?.id ?? currentTrack.id,
+        videoId: failedVideoId ?? "",
       });
-      next("error");
+      if (isCurrentTrack) {
+        wasPlayingRef.current = false;
+        setPlayback((value) => ({ ...value, playing: false }));
+        advanceToPlayable();
+      }
     },
-    [currentTrack.videoId, next],
+    [advanceToPlayable, currentTrack.id, currentTrack.videoId, playlist.tracks],
   );
 
   useEffect(() => {
@@ -489,36 +539,58 @@ export function RadioStation() {
     const timer = window.setInterval(() => {
       const player = playerRef.current;
       if (!player) return;
-      setPlayback({
-        elapsed: player.getCurrentTime() || 0,
-        duration: player.getDuration() || 0,
-        playing: true,
-      });
+      try {
+        const playerState = player.getPlayerState();
+        setPlayback((state) => ({
+          elapsed: player.getCurrentTime() || 0,
+          duration: player.getDuration() || 0,
+          playing:
+            playerState === YOUTUBE_STATE.PLAYING
+              ? true
+              : playerState === YOUTUBE_STATE.PAUSED || playerState === YOUTUBE_STATE.ENDED
+                ? false
+                : state.playing,
+        }));
+      } catch {
+        playerRef.current = null;
+        wasPlayingRef.current = false;
+        setPlayback((state) => ({ ...state, playing: false }));
+      }
     }, 400);
     return () => window.clearInterval(timer);
   }, [playback.playing]);
 
   const onPlayPause = useCallback(() => {
+    if (!currentTrack.videoId) return;
     const player = playerRef.current;
-    if (!player) return;
-    if (playback.playing) player.pauseVideo();
-    else player.playVideo();
-  }, [playback.playing]);
+    if (playback.playing) {
+      player?.pauseVideo();
+      return;
+    }
+    if (player) {
+      player.playVideo();
+    } else {
+      setAutoplay(true);
+    }
+  }, [currentTrack.videoId, playback.playing]);
 
   const onSeek = useCallback((seconds: number) => {
-    playerRef.current?.seekTo(seconds, true);
+    const player = playerRef.current;
+    if (!player) return;
+    player.seekTo(seconds, true);
     setPlayback((state) => ({ ...state, elapsed: seconds }));
   }, []);
 
   const changePlaylist = useCallback((index: number) => {
     if (index === playlistIndex) return;
     const selected = playlists[index];
+    const firstPlayable = firstPlayableIndex(selected, failedVideoIds.current);
     setPlaylistIndex(index);
-    setTrackIndex(firstPlayableIndex(selected));
+    setTrackIndex(firstPlayable);
+    setAutoplay(false);
     setPlayback({ elapsed: 0, duration: 0, playing: false });
-    playerRef.current = null;
     lastYouTubeState.current = null;
-    autoplayOnReady.current = false;
+    wasPlayingRef.current = false;
     trackEvent("playlist_change", { playlist: selected.id });
   }, [playlistIndex]);
 
@@ -526,13 +598,14 @@ export function RadioStation() {
     () => ({
       track: currentTrack,
       canPlay,
+      canSeek,
       ...playback,
       onPlayPause,
       onPrevious: previous,
-      onNext: () => next("manual"),
+      onNext: next,
       onSeek,
     }),
-    [canPlay, currentTrack, next, onPlayPause, onSeek, playback, previous],
+    [canPlay, canSeek, currentTrack, next, onPlayPause, onSeek, playback, previous],
   );
 
   return (
@@ -552,7 +625,9 @@ export function RadioStation() {
 
         <YouTubePlayer
           videoId={currentTrack.videoId}
-          onReady={onReady}
+          autoplay={autoplay}
+          onPlayerChange={onPlayerChange}
+          onLifecycleChange={setPlayerLifecycle}
           onStateChange={onStateChange}
           onError={onError}
         />
