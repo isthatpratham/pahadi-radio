@@ -1,10 +1,10 @@
 export type Track = {
-  id: number;
+  id: string;
   title: string;
   artist: string;
   film: string;
   year: number | null;
-  duration: number | null;
+  duration: string;
   videoId: string | null;
 };
 

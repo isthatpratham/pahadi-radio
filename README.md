@@ -9,24 +9,22 @@ npm install
 npm run dev
 ```
 
-The catalog intentionally ships without YouTube sources. Provide a valid YouTube `videoId` from a source you are authorized to use, with embedding enabled, before expecting playback.
+The active catalog contains only explicitly approved YouTube sources. YouTube's visible IFrame Player remains the runtime authority for playback and embedding availability.
 
-### Test playback locally
-
-Copy `.env.example` to `.env.local` and set:
-
-```dotenv
-NEXT_PUBLIC_YOUTUBE_TEST_VIDEO_ID=
-```
-
-In development only, this value is assigned to catalog track 1. Leave it empty until you have an authorized, embeddable test video. Restart the development server after changing it.
-
-### Add an approved source permanently
-
-In `data/playlists.ts`, update only the corresponding track line by supplying its seventh argument:
+### Add an approved source
 
 ```ts
-track(2, "Hafiz Hafiz", "Mohit Chauhan", "Laila Majnu", null, null, "APPROVED_VIDEO_ID")
+{
+  id: "track-id",
+  title: "Track title",
+  artist: "Artist",
+  film: "Film or Indie",
+  year: 2026,
+  duration: "",
+  videoId: "APPROVED_VIDEO_ID",
+}
 ```
 
-`APPROVED_VIDEO_ID` above is documentation syntax, not a real or bundled video ID. Do not use unofficial uploads or videos without embedding permission.
+Add the shared object to the appropriate playlist arrays. Leave `duration` empty unless a canonical value is known; the player reads the actual runtime duration from YouTube.
+
+`APPROVED_VIDEO_ID` is documentation syntax, not a real source. Only use authorized uploads with embedding enabled.
