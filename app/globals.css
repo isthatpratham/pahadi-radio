@@ -237,6 +237,26 @@ a:focus-visible,
   backdrop-filter: blur(48px) saturate(1.7);
 }
 
+.integrated-player-card {
+  overflow: hidden;
+  border-radius: 30px;
+}
+
+.integrated-player-card .video-shell {
+  min-height: 200px;
+  border: 0;
+  border-radius: 0;
+  background: #090d10;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.player-controls {
+  position: relative;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.08), transparent);
+}
+
 .vinyl {
   position: relative;
   display: grid;

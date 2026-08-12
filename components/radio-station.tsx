@@ -302,7 +302,7 @@ function TrackDetails({ track }: { track: Track }) {
 
 function DesktopPlayer(props: PlayerViewProps) {
   return (
-    <div className="glass-player hidden min-w-0 items-center gap-3 rounded-full p-3 pr-5 sm:flex">
+    <div className="player-controls hidden min-w-0 items-center gap-3 rounded-full p-3 pr-5 sm:flex">
       <Vinyl playing={props.playing} size="desktop" />
       <div className="min-w-0 flex-1">
         <TrackDetails track={props.track} />
@@ -330,7 +330,7 @@ function DesktopPlayer(props: PlayerViewProps) {
 
 function MobilePlayer(props: PlayerViewProps) {
   return (
-    <div className="glass-player rounded-[26px] p-4 sm:hidden">
+    <div className="player-controls rounded-[26px] p-4 sm:hidden">
       <div className="flex items-center gap-3.5">
         <Vinyl playing={props.playing} size="mobile" />
         <div className="min-w-0 flex-1">
@@ -623,19 +623,18 @@ export function RadioStation() {
           <span className="hidden text-[9px] tracking-[0.18em] text-white/35 uppercase sm:block">Est. after midnight</span>
         </div>
 
-        <YouTubePlayer
-          videoId={currentTrack.videoId}
-          autoplay={autoplay}
-          onPlayerChange={onPlayerChange}
-          onLifecycleChange={setPlayerLifecycle}
-          onStateChange={onStateChange}
-          onError={onError}
-        />
-
         <div className="mt-2.5">
           <PlaylistSelector activeId={playlist.id} onChange={changePlaylist} />
         </div>
-        <div className="mt-2.5">
+        <div className="integrated-player-card glass-player mt-2.5">
+          <YouTubePlayer
+            videoId={currentTrack.videoId}
+            autoplay={autoplay}
+            onPlayerChange={onPlayerChange}
+            onLifecycleChange={setPlayerLifecycle}
+            onStateChange={onStateChange}
+            onError={onError}
+          />
           <DesktopPlayer {...playerProps} />
           <MobilePlayer {...playerProps} />
         </div>
